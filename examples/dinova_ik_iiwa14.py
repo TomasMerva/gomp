@@ -2,12 +2,16 @@ from grasp_planning import IK_OPTIM
 import numpy as np
 import time
 import os
+from scipy.spatial.transform import Rotation as R
 
-# Desired pose
-T_W_Ref = np.array([[-7.02597833e-01, -2.96854396e-04, -7.11587097e-01, -2.34231147e+00],
-                    [-2.46720383e-02,  9.99408826e-01,  2.39434383e-02,  1.77948216e+00],
-                    [ 7.11159318e-01,  3.43789119e-02, -7.02189800e-01,  7.08295920e-01],
-                    [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  1.00000000e+00]], dtype=float)
+# Desired pose (checked to be reachable for iiwa14):
+goal_position = np.array([[0.60829608], [0.44368581], [0.252421]])
+goal_orientation = np.array([0.61566569, -0.37995015, 0.67837375, -0.12807299])
+r = R.from_quat(goal_orientation)
+orientation_matrix = r.as_matrix()
+T_W_Ref = np.concatenate([orientation_matrix, goal_position], axis=1)
+T_W_Ref = np.concatenate([T_W_Ref, np.array([[0, 0, 0, 1]])])
+
 # Obstacle's pose
 T_W_Obst = np.eye(4)
 T_W_Obst[:3,3] = np.array([-1., 0.4, 0.15]).T
@@ -32,21 +36,18 @@ planner.add_orientation_constraint(tolerance=0.01)
 # Define collision constraint for each link
 active_links = [f'iiwa_link_{i}' for i in range(8)]
 active_links.append('iiwa_link_ee')
-# for link in active_links:
-#     planner.add_collision_constraint(child_link=link,
-#                                      r_link=0.2,
-#                                      r_obst=0.2,
-#                                      tolerance=0.01)
+for link in active_links:
+    planner.add_collision_constraint(child_link=link,
+                                     r_link=0.2,
+                                     r_obst=0.2,
+                                     tolerance=0.01)
 # Formulate problem
 planner.setup_problem(verbose=False)
 
 
 # Call IK solver
 for i in range(10):
-    T_W_Ref = np.array([[-7.02597833e-01, -2.96854396e-04, -7.11587097e-01, -2.34231147e+00-i*0.23],
-                    [-2.46720383e-02,  9.99408826e-01,  2.39434383e-02,  1.77948216e+00-i*0.23],
-                    [ 7.11159318e-01,  3.43789119e-02, -7.02189800e-01,  7.08295920e-01],
-                    [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  1.00000000e+00]], dtype=float)
+    T_W_Ref[1, 3] = T_W_Ref[1, 3] - i * 0.03
 
     start = time.time()
     planner.update_constraints_params(T_W_Ref=T_W_Ref,
