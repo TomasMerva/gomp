@@ -1,8 +1,3 @@
-This package provides grasp and motion planning using CasADi and IPOPT. 
-
-
-## Usage
-```python
 from grasp_planning import GOMP
 import numpy as np
 import time
@@ -45,7 +40,3 @@ x, solver_flag = planner.solve()
 end = time.time()
 print(f"Computational time: {end-start}" )
 print(f"Solver status: {solver_flag}" )
-```
-
-## ToDo
-- [ ] removing constraints
