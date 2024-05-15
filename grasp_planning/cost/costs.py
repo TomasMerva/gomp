@@ -1,2 +1,2 @@
 from grasp_planning.cost.squared_acc_cost import SquaredAccCost
-
+from grasp_planning.cost.dist_to_home import DistToHome

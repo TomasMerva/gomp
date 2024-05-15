@@ -50,4 +50,5 @@ class RobotKinematicModel():
     def get_joint_pos_limits(self):
         return self.joint_pos_limits
 
-
+    def get_link_names(self):
+        return self.robot_fk.robot.link_names()

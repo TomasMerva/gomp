@@ -137,7 +137,7 @@ class GOMP():
                              ubg=self.g_ub,
                              lbx=self.l_joint_limits.reshape((-1,1), order='F'),
                              ubx=self.u_joint_limits.reshape((-1,1), order='F'),
-                             p=self.T_W_Grasp)
+                             p=self.params_optim_num)
 
         success_flag = self.solver.stats()["success"]
         success_msg = self.solver.stats()["return_status"]
@@ -182,3 +182,4 @@ class GOMP():
             self.params_optim_num = ca.vertcat(self.T_W_Grasp, T_W_Obst)
         else:
             self.params_optim_num = self.T_W_Grasp
+

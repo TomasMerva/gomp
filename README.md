@@ -49,3 +49,9 @@ print(f"Solver status: {solver_flag}" )
 
 ## ToDo
 - [ ] removing constraints
+- [ ] automatic constraints for collisions
+
+1. zacni riesit to ze nejde mi parametre
+
+- trebalo poriesit ze kazde zavolanie add collision vytvori premennu pre obstacle
+- idealne poriesit aby sa zadaval aj parent link pre koliziu
