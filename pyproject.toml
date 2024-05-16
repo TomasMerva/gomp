@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "grasp_planning"
-version = "0.5.3"
+version = "0.5.4"
 description = "\"Grasp and Motion Planning Python Package.\""
 authors = ["Tomas Merva <tmerva7@gmail.com>"]
 license = "MIT"
@@ -12,7 +12,7 @@ repository = "https://github.com/TomasMerva/gomp.git"
 python = "^3.8,<3.10"
 casadi = "^3.6"
 numpy = "^1.15.3"
-forwardkinematics = ">=1.1.3"
+forwardkinematics = ">=1.2.0"
 spatial-casadi="^1.1.0"
 scipy="<=1.10.1"
 

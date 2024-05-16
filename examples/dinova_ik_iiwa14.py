@@ -5,6 +5,8 @@ import os
 from scipy.spatial.transform import Rotation as R
 
 # Desired pose (checked to be reachable for iiwa14):
+# xee_NN: [ 0.52677347  0.35190244  0.48685025  0.81098249  0.17874092  0.44319898
+# -0.33754081]
 goal_position = np.array([[0.52677347,  0.35190244,  0.48685025]])
 goal_orientation = np.array([0.81098249,  0.17874092,  0.44319898, -0.33754081])
 r = R.from_quat(goal_orientation)
@@ -36,7 +38,7 @@ planner.set_init_guess(q_home)
 
 planner.set_boundary_conditions() # joint limits
 planner.add_position_constraint(tolerance=0.0)
-planner.add_orientation_constraint(tolerance=0.0)
+planner.add_orientation_constraint(tolerance=0.01)
 # Define collision constraint for each link
 active_links = [f'iiwa_link_{i}' for i in range(8)]
 active_links.append('iiwa_link_ee')
@@ -70,8 +72,8 @@ print(x)
 #     print(f"Computational time: {end-start}" )
 #     print(f"Solver status: {solver_flag}" )
 
-print("========")
-print("Desired T\n", T_W_Ref)
+# print("========")
+# print("Desired T\n", T_W_Ref)
 
 T_W_Grasp = planner._robot_model.eval_fk(x)
 print("IK solver\n", T_W_Grasp)
