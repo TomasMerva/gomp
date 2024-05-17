@@ -7,7 +7,7 @@ from grasp_planning.cost.costs import SquaredAccCost
 from grasp_planning.constraints.constraints import *
 
 class GOMP():
-    def __init__(self, n_waypoints, urdf, theta=np.pi/4, root_link='world', end_link='tool_frame') -> None:
+    def __init__(self, n_waypoints, urdf, theta=np.pi/4, roll_obj_grasp = np.pi, root_link='world', end_link='tool_frame') -> None:
         # Init variables
         self.T_W_Grasp = None
         self.T_W_Obj = None
@@ -20,6 +20,7 @@ class GOMP():
         self.x_dim = self.n_dofs
         self.n_waypoints = n_waypoints
         self.theta = theta
+        self.roll_obj_grasp = roll_obj_grasp
         
         # Optimization
         self.x = ca.SX.sym("x", self.x_dim, self.n_waypoints)
@@ -43,10 +44,10 @@ class GOMP():
         self.T_Obj_Grasp = np.eye(4, dtype=float)
         if degrees:
             self.theta = np.deg2rad(theta)
-            self.R_Obj_Grasp = R.from_euler('xyz', [180, 0, self.theta], degrees=True).as_matrix()
+            self.R_Obj_Grasp = R.from_euler('xyz', [np.rad2deg(self.roll_obj_grasp), 0, self.theta], degrees=True).as_matrix()
         else:
             self.theta = theta
-            self.R_Obj_Grasp = R.from_euler('xyz', [np.pi, 0, self.theta], degrees=False).as_matrix()
+            self.R_Obj_Grasp = R.from_euler('xyz', [self.roll_obj_grasp, 0, self.theta], degrees=False).as_matrix()
         self.T_Obj_Grasp[:3,:3] = self.R_Obj_Grasp
         self.T_W_Grasp = self.T_W_Obj @ self.T_Obj_Grasp
         
@@ -158,9 +159,9 @@ class GOMP():
                                               self.theta, 
                                               tolerance))
 
-    def add_grasp_constraint(self, waypoint_ID, tolerance=0.0):
-        self._add_grasp_pos_constraint(waypoint_ID, tolerance)
-        self._add_grasp_rot_constraint(waypoint_ID, tolerance)
+    def add_grasp_constraint(self, waypoint_ID, pos_tolerance=0.0, rot_tolerance=0.01):
+        self._add_grasp_pos_constraint(waypoint_ID, pos_tolerance)
+        self._add_grasp_rot_constraint(waypoint_ID, rot_tolerance)
         self.param_ca_list.append(self.param_grasp_ca)
 
     def add_collision_constraint(self, waypoint_ID, child_link, r_link=0.5, r_obst=0.2, tolerance=0.01):

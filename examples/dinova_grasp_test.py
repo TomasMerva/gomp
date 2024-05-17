@@ -20,9 +20,14 @@ absolute_path = os.path.dirname(os.path.abspath(__file__))
 URDF_FILE = absolute_path + "/assets/dingo_kinova_gripper.urdf"
 
 
-num_waypoints = 3 # needs to be more than 3 for now
+n_waypoints = 3 # needs to be more than 3 for now
 theta = np.pi/4 #Degree of freedom around grasp pose
-planner = GOMP(num_waypoints, URDF_FILE, theta, 'world', 'arm_tool_frame')
+planner = GOMP(n_waypoints=n_waypoints, 
+               urdf=URDF_FILE, 
+               theta=theta, 
+               roll_obj_grasp=np.pi/2,
+               root_link='world', 
+               end_link='arm_tool_frame')
 
 active_links = ['chassis_link', 
                 'arm_base_link', 
@@ -38,8 +43,10 @@ active_links = ['chassis_link',
 
 planner.set_init_guess(q_init)
 planner.set_boundary_conditions(q_start=q_current)
-planner.add_grasp_constraint(waypoint_ID=2, tolerance=0.01)
-for i in range(num_waypoints):
+planner.add_grasp_constraint(waypoint_ID=2, 
+                             pos_tolerance=0.01, 
+                             rot_tolerance=0.01)
+for i in range(n_waypoints):
     for link in active_links:
         planner.add_collision_constraint(waypoint_ID=i, 
                                         child_link=link, 
@@ -57,4 +64,4 @@ print(f"Computational time: {end-start}" )
 print(f"Solver status: {solver_flag}" )
 
 T_W_Grasp = planner._robot_model.eval_fk(x[:,-1])
-print(T_W_Grasp)
+print("Optimized grasp pose:\n", T_W_Grasp)
