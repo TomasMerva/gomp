@@ -7,7 +7,7 @@ from grasp_planning.cost.costs import SquaredAccCost
 from grasp_planning.constraints.constraints import *
 
 class GOMP():
-    def __init__(self, n_waypoints, urdf, theta=np.pi/4, roll_obj_grasp = np.pi, root_link='world', end_link='tool_frame') -> None:
+    def __init__(self, n_waypoints, urdf, theta=np.pi/4, pitch_obj_grasp = np.pi, root_link='world', end_link='tool_frame') -> None:
         # Init variables
         self.T_W_Grasp = None
         self.T_W_Obj = None
@@ -20,7 +20,7 @@ class GOMP():
         self.x_dim = self.n_dofs
         self.n_waypoints = n_waypoints
         self.theta = theta
-        self.roll_obj_grasp = roll_obj_grasp
+        self.pitch_obj_grasp = pitch_obj_grasp
         
         # Optimization
         self.x = ca.SX.sym("x", self.x_dim, self.n_waypoints)
@@ -37,22 +37,22 @@ class GOMP():
         self.param_ca_list = []
 
 
-    def update_grasp_DOF(self, theta: float, degrees=True) -> None:
+    def update_grasp_DOF(self, theta: float, pitch_obj_grasp: float, degrees=True) -> None:
         """
         Object has to have z-axis aligned with the world frame
         """
         self.T_Obj_Grasp = np.eye(4, dtype=float)
         if degrees:
             self.theta = np.deg2rad(theta)
-            self.R_Obj_Grasp = R.from_euler('xyz', [np.rad2deg(self.roll_obj_grasp), 0, self.theta], degrees=True).as_matrix()
+            self.pitch_obj_grasp = np.deg2rad(pitch_obj_grasp)
         else:
             self.theta = theta
-            self.R_Obj_Grasp = R.from_euler('xyz', [self.roll_obj_grasp, 0, self.theta], degrees=False).as_matrix()
+            self.pitch_obj_grasp = pitch_obj_grasp
+
+        self.R_Obj_Grasp = R.from_euler('xyz', [0, self.pitch_obj_grasp, 0.0], degrees=False).as_matrix()
         self.T_Obj_Grasp[:3,:3] = self.R_Obj_Grasp
         self.T_W_Grasp = self.T_W_Obj @ self.T_Obj_Grasp
         
-        # print("T_W_Grasp\n", self.T_W_Grasp)
-
 
     def update_object_pose(self, T_W_Obj: np.array) -> None:
         """
@@ -177,7 +177,7 @@ class GOMP():
 
     def update_constraints_params(self, T_W_Obj, T_W_Obst=None):
         self.update_object_pose(T_W_Obj)
-        self.update_grasp_DOF(theta=self.theta, degrees=False)
+        self.update_grasp_DOF(theta=self.theta,  pitch_obj_grasp=self.pitch_obj_grasp, degrees=False)
 
         if self._collision_flag:
             self.params_optim_num = ca.vertcat(self.T_W_Grasp, T_W_Obst)
