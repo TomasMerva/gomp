@@ -28,53 +28,53 @@ absolute_path = os.path.dirname(os.path.abspath(__file__))
 URDF_FILE = absolute_path + "/assets/iiwa14.urdf"
 
 
+
 # Create IK solver
 planner = IK_OPTIM(urdf=URDF_FILE,
                    root_link = 'world', 
                    end_link  = 'iiwa_link_ee')
-
-planner.set_home_config(q_home)
 planner.set_init_guess(q_home)
-
 planner.set_boundary_conditions() # joint limits
-planner.add_position_constraint(tolerance=0.0)
-planner.add_orientation_constraint(tolerance=0.01)
+
+planner.add_objective_function(name="objective")
+planner.add_position_constraint(name="g_position", tolerance=0)
+planner.add_orientation_constraint(name="g_rotation", tolerance=0.01)
+
+
 # Define collision constraint for each link
 active_links = [f'iiwa_link_{i}' for i in range(8)]
 active_links.append('iiwa_link_ee')
-# for link in active_links:
-#     planner.add_collision_constraint(child_link=link,
-#                                      r_link=0.2,
-#                                      r_obst=0.2,
-#                                      tolerance=0.01)
+planner.add_collision_constraint(name="sphere_col",
+                                 link_names=active_links, 
+                                 r_link=0.2,
+                                 r_obst=0.2,
+                                 tolerance=0.01)
+planner.param_ca_dict["sphere_col"]["num_param"] = T_W_Obst[:3,3]
+
+
 # Formulate problem
-planner.setup_problem(verbose=True)
+planner.setup_problem(verbose=False)
 
 
-start = time.time()
-planner.update_constraints_params(T_W_Ref=T_W_Ref)
-x, solver_flag = planner.solve()
-end = time.time()
-print(f"Computational time: {end-start}" )
-print(f"Solver status: {solver_flag}" )
+# Call IK solver
+for i in range(10):
+    T_W_Ref[1, 3] = T_W_Ref[1, 3] - i * 0.03
 
-print(x)
+    start = time.time()
+    planner.set_init_guess(q_home)
+    planner.param_ca_dict["objective"]["num_param"] = q_home # setting home configuration
+    planner.param_ca_dict["g_position"]["num_param"] = T_W_Ref
+    planner.param_ca_dict["g_rotation"]["num_param"] = T_W_Ref
 
-# # Call IK solver
-# for i in range(10):
-#     T_W_Ref[1, 3] = T_W_Ref[1, 3] - i * 0.03
+    x, solver_flag = planner.solve()
+    end = time.time()
+    print(f"Iteration {i}")
+    print(f"Computational time: {end-start}" )
+    print(f"Solver status: {solver_flag}" )
 
-#     start = time.time()
-#     planner.update_constraints_params(T_W_Ref=T_W_Ref)
-#     x, solver_flag = planner.solve()
-#     end = time.time()
-#     print(f"Iteration {i}")
-#     print(f"Computational time: {end-start}" )
-#     print(f"Solver status: {solver_flag}" )
+# # print("========")
+# # print("Desired T\n", T_W_Ref)
 
-# print("========")
-# print("Desired T\n", T_W_Ref)
-
-T_W_Grasp = planner._robot_model.eval_fk(x)
-print("IK solver\n", T_W_Grasp)
+# T_W_Grasp = planner._robot_model.eval_fk(x)
+# print("IK solver\n", T_W_Grasp)
 

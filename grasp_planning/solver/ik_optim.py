@@ -24,14 +24,8 @@ class IK_OPTIM():
         self.l_joint_limits, self.u_joint_limits = None, None
         self.g_list = []
 
-        self.param_T_W_Ref = ca.SX.sym("param_grasp", 4, 4)
-        self.param_obst_ca = ca.SX.sym("param_obst", 4, 4)
-        self.param_optim_ca = ca.vertcat()
-        self.param_ca_list = [self.param_T_W_Ref]
-        self._collision_flag = False
+        self.param_ca_dict = dict()
 
-    def set_home_config(self, q):
-        self.q_home = q
 
     def set_init_guess(self, q):
         self.x_init = q
@@ -50,17 +44,7 @@ class IK_OPTIM():
     
 
     def setup_problem(self, verbose=False):
-        # assert self.T_Obj_Grasp != None, "Grasp DOF is not set. Set additional degree of freedom around object."
-        # assert self.T_W_Obj != None, "Object pose is not set."
-        # 1. create decision variable
-        
-        # assert self.x_init != None, "Initial guess is missing. Set up one using `set_init_guess(q)`."
-
-        # Define objective function
-        cost = DistToHome(q_home=self.q_home,
-                          n_dofs=self.x_dim)
-        objective = cost.eval_cost(self.x)
-
+        # Read Constraints
         g, self.g_lb, self.g_ub = ca.vertcat(), ca.vertcat(), ca.vertcat()
         for g_term in self.g_list:
             gt, g_lb, g_ub = g_term.get_constraint()
@@ -68,65 +52,101 @@ class IK_OPTIM():
             self.g_lb = ca.vertcat(self.g_lb, g_lb)
             self.g_ub = ca.vertcat(self.g_ub, g_ub)
 
-        if self._collision_flag:
-            self.param_ca_list.append(self.param_obst_ca)
 
+        # Read Symbolic Paramaters
+        for i, param in enumerate(self.param_ca_dict):
+            if i == 0:
+                self._param_ca = self.param_ca_dict[param]["sym_param"]
+            else:
+                self._param_ca = ca.vertcat(self._param_ca, self.param_ca_dict[param]["sym_param"].reshape((-1,1)))
 
-        self.param_optim_ca = ca.vertcat(self.param_ca_list[0])
-        for i in range(1, len(self.param_ca_list)):
-            self.param_optim_ca = ca.vertcat(self.param_optim_ca, self.param_ca_list[i])
-
+        # Solver settings
         options = {}
         options["ipopt.acceptable_tol"] = 1e-3
         if not verbose:
             options["ipopt.print_level"] = 0
             options["print_time"] = 0
 
-        self.solver = ca.nlpsol('solver', 'ipopt', {'x': self.x, 'f': objective, 'g': g, 'p': self.param_optim_ca}, options)
+        # Define solver
+        self.solver = ca.nlpsol('solver', 'ipopt', {'x': self.x, 'f': self.objective.eval_cost(self.x), 'g': g, 'p': self._param_ca}, options)
     
 
         
     def solve(self):
+        # Replace symbolic variables with numeric values
+        for i, param in enumerate(self.param_ca_dict):
+            if i == 0:
+                self._param_num = self.param_ca_dict[param]["num_param"]
+            else:
+                self._param_num = ca.vertcat(self._param_num, self.param_ca_dict[param]["num_param"].reshape((-1,1), order='F'))
+
         result = self.solver(x0=self.x_init,
                              lbg=self.g_lb,
                              ubg=self.g_ub,
                              lbx=self.l_joint_limits.reshape((-1,1), order='F'),
                              ubx=self.u_joint_limits.reshape((-1,1), order='F'),
-                             p=self.params_optim_num)
+                             p=self._param_num)
 
         success_flag = self.solver.stats()["success"]
         success_msg = self.solver.stats()["return_status"]
         return  result['x'], success_flag
+    
 
-    def add_position_constraint(self, tolerance=0.0):
+    def add_objective_function(self, name):
+        # Define parameter sym variable
+        self.param_ca_dict[name] =  {
+            "sym_param" : ca.SX.sym(name, self.x_dim, 1),
+            "num_param" : np.zeros((self.x_dim, 1))
+            }
+        # Create objective function
+        self.objective = DistToHome(q_home=self.param_ca_dict[name]["sym_param"] ,
+                                    n_dofs=self.x_dim)
+      
+    def add_position_constraint(self, name, tolerance=0.0):
+        # Define parameter sym variable
+        self.param_ca_dict[name] =  {
+            "sym_param" : ca.SX.sym(name, 4, 4),
+            "num_param" : np.eye(4)
+            }
+        # Create constraint
         self.g_list.append(PositionConstraint(robot=self._robot_model,
                                               q_ca=self.x,
-                                              paramca_T_W_Ref=self.param_T_W_Ref,
+                                              paramca_T_W_Ref=self.param_ca_dict[name]["sym_param"],
                                               tolerance=tolerance))
 
-    def add_orientation_constraint(self, tolerance=0.0):
+
+    def add_orientation_constraint(self, name, tolerance=0.0):
+        # Define parameter sym variable
+        self.param_ca_dict[name] =  {
+            "sym_param" : ca.SX.sym(name, 4, 4),
+            "num_param" : np.eye(4),
+            "tolerance" : tolerance
+            }
+        # Create constraint
         self.g_list.append(OrientationConstraint(robot=self._robot_model,
                                                  q_ca=self.x,
-                                                 paramca_T_W_Ref=self.param_T_W_Ref,
+                                                 paramca_T_W_Ref=self.param_ca_dict[name]["sym_param"],
                                                  tolerance=tolerance))
+
+
 
     
 
-    def add_collision_constraint(self, child_link, r_link=0.5, r_obst=0.2, tolerance=0.01):
-        self._collision_flag = True
-        self.g_list.append(CollisionConstraint(robot=self._robot_model,
-                                                q_ca=self.x,
-                                                waypoint_ID=0,
-                                                param_obst_ca=self.param_obst_ca,
-                                                link_name=child_link,
-                                                r_link= r_link,
-                                                r_obst= r_obst,
-                                                tolerance=tolerance))
-
-    def update_constraints_params(self, T_W_Ref, T_W_Obst=None):
-        self.T_W_Ref = T_W_Ref
-        if self._collision_flag:
-            self.params_optim_num = ca.vertcat(self.T_W_Ref, T_W_Obst)
-        else:
-            self.params_optim_num = self.T_W_Ref
+    def add_collision_constraint(self, name, link_names, r_link=0.5, r_obst=0.2, tolerance=0.01):
+        # Define parameter sym variable
+        self.param_ca_dict[name] =  {
+            "sym_param" : ca.SX.sym(name, 3, 1),
+            "num_param" : np.zeros((3,1)),
+            "tolerance" : tolerance
+            }
+        # Create constraint
+        for link in link_names:
+            self.g_list.append(CollisionConstraint(robot=self._robot_model,
+                                                    q_ca=self.x,
+                                                    waypoint_ID=0,
+                                                    param_obst_ca=self.param_ca_dict[name]["sym_param"],
+                                                    link_name=link,
+                                                    r_link= r_link,
+                                                    r_obst= r_obst,
+                                                    tolerance=tolerance))
 

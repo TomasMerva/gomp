@@ -4,3 +4,4 @@ from grasp_planning.constraints.grasp_rot_constraint import *
 from grasp_planning.constraints.manipulation_constraint import *
 from grasp_planning.constraints.position_constraint import *
 from grasp_planning.constraints.orientation_constraint import *
+from grasp_planning.constraints.z_height_constraint import *

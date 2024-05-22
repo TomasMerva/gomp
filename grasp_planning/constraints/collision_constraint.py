@@ -12,9 +12,9 @@ class CollisionConstraint(Constraint):
         self.r_obst = r_obst
         self.d_safety = tolerance
         
-        T_W_link = self._robot.compute_fk_ca(q_ca, link_name)
+        T_W_link = self._robot.compute_fk_ca(q_ca[:,waypoint_ID], link_name)
 
-        self.g = ca.norm_2(T_W_link[:3,3]-param_obst_ca[:3,3]) #obstacle_pos
+        self.g = ca.norm_2(T_W_link[:3,3]-param_obst_ca) #obstacle_pos
         self.g_lb = self.r_link + self.r_obst + self.d_safety
         self.g_ub = float("inf")
 
