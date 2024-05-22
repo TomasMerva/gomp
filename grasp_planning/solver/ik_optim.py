@@ -24,12 +24,6 @@ class IK_OPTIM():
         self.l_joint_limits, self.u_joint_limits = None, None
         self.g_list = []
 
-        self.param_T_W_Ref = ca.SX.sym("param_grasp", 4, 4)
-        self.param_obst_ca = ca.SX.sym("param_obst", 4, 4)
-        self.param_optim_ca = ca.vertcat()
-        self.param_ca_list = [self.param_T_W_Ref]
-        self._collision_flag = False
-
         self.param_ca_dict = dict()
 
 
@@ -79,7 +73,7 @@ class IK_OPTIM():
 
         
     def solve(self):
-        # Read Symbolic Paramaters
+        # Replace symbolic variables with numeric values
         for i, param in enumerate(self.param_ca_dict):
             if i == 0:
                 self._param_num = self.param_ca_dict[param]["num_param"]
@@ -98,9 +92,8 @@ class IK_OPTIM():
         return  result['x'], success_flag
     
 
-    def add_objective_function(self):
+    def add_objective_function(self, name):
         # Define parameter sym variable
-        name = "objective_param"
         self.param_ca_dict[name] =  {
             "sym_param" : ca.SX.sym(name, self.x_dim, 1),
             "num_param" : np.zeros((self.x_dim, 1))
@@ -109,9 +102,8 @@ class IK_OPTIM():
         self.objective = DistToHome(q_home=self.param_ca_dict[name]["sym_param"] ,
                                     n_dofs=self.x_dim)
       
-    def add_position_constraint(self, tolerance=0.0):
+    def add_position_constraint(self, name, tolerance=0.0):
         # Define parameter sym variable
-        name = "position_g_param"
         self.param_ca_dict[name] =  {
             "sym_param" : ca.SX.sym(name, 4, 4),
             "num_param" : np.eye(4)
@@ -123,12 +115,12 @@ class IK_OPTIM():
                                               tolerance=tolerance))
 
 
-    def add_orientation_constraint(self, tolerance=0.0):
+    def add_orientation_constraint(self, name, tolerance=0.0):
         # Define parameter sym variable
-        name = "orientation_g_param"
         self.param_ca_dict[name] =  {
             "sym_param" : ca.SX.sym(name, 4, 4),
-            "num_param" : np.eye(4)
+            "num_param" : np.eye(4),
+            "tolerance" : tolerance
             }
         # Create constraint
         self.g_list.append(OrientationConstraint(robot=self._robot_model,
@@ -143,8 +135,9 @@ class IK_OPTIM():
     def add_collision_constraint(self, name, link_names, r_link=0.5, r_obst=0.2, tolerance=0.01):
         # Define parameter sym variable
         self.param_ca_dict[name] =  {
-            "sym_param" : ca.SX.sym(name, 4, 4),
-            "num_param" : np.eye(4)
+            "sym_param" : ca.SX.sym(name, 3, 1),
+            "num_param" : np.zeros((3,1)),
+            "tolerance" : tolerance
             }
         # Create constraint
         for link in link_names:

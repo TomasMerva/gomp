@@ -25,7 +25,6 @@ T_W_Obst[:3,3] = np.array([-1., 0.4, 0.15]).T
 q_home = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 1.57, 1.57,  1.57, 1.57], dtype=float)
 
 
-
 """
 Solver
 """
@@ -36,9 +35,9 @@ planner = IK_OPTIM(urdf=URDF_FILE,
 planner.set_init_guess(q_home)
 planner.set_boundary_conditions() # joint limits
 
-planner.add_objective_function()
-planner.add_position_constraint(tolerance=0)
-planner.add_orientation_constraint(tolerance=0.01)
+planner.add_objective_function(name="objective")
+planner.add_position_constraint(name="g_position", tolerance=0)
+planner.add_orientation_constraint(name="g_rotation", tolerance=0.01)
 
 
 # Define collision constraint for each link
@@ -56,7 +55,7 @@ planner.add_collision_constraint(name="sphere_col",
                                  r_link=0.2,
                                  r_obst=0.2,
                                  tolerance=0.01)
-planner.param_ca_dict["sphere_col"]["num_param"] = T_W_Obst
+planner.param_ca_dict["sphere_col"]["num_param"] = T_W_Obst[:3,3]
 
 
 # Formulate problem
@@ -64,9 +63,9 @@ planner.setup_problem(verbose=False)
 
 
 
-planner.param_ca_dict["objective_param"]["num_param"] = q_home  # home configuration
-planner.param_ca_dict["position_g_param"]["num_param"] = T_W_Ref
-planner.param_ca_dict["orientation_g_param"]["num_param"] = T_W_Ref
+planner.param_ca_dict["objective"]["num_param"] = q_home  # home configuration
+planner.param_ca_dict["g_position"]["num_param"] = T_W_Ref
+planner.param_ca_dict["g_rotation"]["num_param"] = T_W_Ref
 
 
 
@@ -81,9 +80,9 @@ for i in range(10):
     start = time.time()
     # Modify parameters during runtime
     planner.set_init_guess(q_home)
-    planner.param_ca_dict["objective_param"]["num_param"] = q_home # setting home configuration
-    planner.param_ca_dict["position_g_param"]["num_param"] = T_W_Ref
-    planner.param_ca_dict["orientation_g_param"]["num_param"] = T_W_Ref
+    planner.param_ca_dict["objective"]["num_param"] = q_home # setting home configuration
+    planner.param_ca_dict["g_position"]["num_param"] = T_W_Ref
+    planner.param_ca_dict["g_rotation"]["num_param"] = T_W_Ref
     # Call solver
     x, solver_flag = planner.solve()
     end = time.time()
@@ -92,5 +91,5 @@ for i in range(10):
     print(f"Computational time: {end-start}" )
     print(f"Solver status: {solver_flag}" )
 
-T_W_Grasp = planner._robot_model.eval_fk(x)
-print(T_W_Grasp)
+# T_W_Grasp = planner._robot_model.eval_fk(x)
+# print(T_W_Grasp)

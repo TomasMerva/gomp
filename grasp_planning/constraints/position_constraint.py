@@ -16,7 +16,7 @@ class PositionConstraint(Constraint):
         self.g = T_W_EEF[:3, 3] - paramca_T_W_Ref[:3,3]
         self.g_lb = np.zeros(3) - self.tolerance
         self.g_ub = np.zeros(3) + self.tolerance
-        self.g_eval = ca.Function('g_grasp_pos', [q_ca, paramca_T_W_Ref], [self.g])
+        self.g_eval = ca.Function('g_pos', [q_ca, paramca_T_W_Ref], [self.g])
       
     def get_constraint(self):
         return self.g, self.g_lb, self.g_ub
