@@ -1,11 +1,5 @@
 import numpy as np
 
-"""
-Finite Differencing Matrix to produce sum of squared accelerations
-ddq= A * q
-ddq.T * ddq = ddq.T * (A.T * A) * ddq
-ddq.T * ddq = ddq.T * P * ddq
-"""
 
 class DistToHome():
     def __init__(self, q_home, n_dofs):

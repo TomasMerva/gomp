@@ -6,8 +6,8 @@ from grasp_planning.solver.robot_model import RobotKinematicModel
 from grasp_planning.cost.costs import *
 from grasp_planning.constraints.constraints import *
 
-class GOMP():
-    def __init__(self, n_waypoints, urdf, roll_obj_grasp = np.pi, root_link='world', end_link='tool_frame') -> None:
+class PICK():
+    def __init__(self, n_waypoints, urdf, theta=np.pi/4, roll_obj_grasp = np.pi, root_link='world', end_link='tool_frame') -> None:
         # Init variables
         self.T_W_Grasp = None
         self.T_W_Obj = None
@@ -17,9 +17,9 @@ class GOMP():
         self._robot_model = RobotKinematicModel(urdf, root_link, end_link)
         self.n_dofs = self._robot_model.n_dofs
         self.manipulation_frame_dim = 6
-        self.x_dim = self.n_dofs
+        self.x_dim = self.n_dofs + self.manipulation_frame_dim
         self.n_waypoints = n_waypoints
-        self.theta = 0.0
+        self.theta = theta
         self.roll_obj_grasp = roll_obj_grasp
         
         # Optimization
@@ -47,6 +47,11 @@ class GOMP():
         self.T_Obj_Grasp = np.eye(4, dtype=float)
         self.T_Obj_Grasp[:3,:3] = R.from_euler('xyz', [0, self.roll_obj_grasp, 0], degrees=False).as_matrix()
 
+        # Compute lower bound with the additional DoF
+        T_Grasp_DoF = np.eye(4)
+        # T_Grasp_DoF[:3,:3] = R.from_euler('xyz', [0.0, -self.theta, 0], degrees=False).as_matrix()
+        T_Grasp_DoF[:3,:3] = R.from_euler('xyz', [-self.theta, 0.0, 0], degrees=False).as_matrix()
+
         # Lower bound with respect to the world frame
         self.T_W_Grasp = self.T_W_Obj @ self.T_Obj_Grasp 
 
@@ -58,7 +63,9 @@ class GOMP():
         self.T_W_Obj = T_W_Obj
 
     def set_init_guess(self, q):
-        self.x_init = np.tile(q, self.n_waypoints).reshape((-1,1))
+        T_W_EEF_rpy = self._robot_model.eval_fk_rpy(q)
+        self.x_init = np.tile(np.concatenate((q, T_W_EEF_rpy), axis=None), 
+                              self.n_waypoints).reshape((-1,1))
 
     def set_boundary_conditions(self, q_start, q_end=None):
         if self.l_joint_limits is None or self.u_joint_limits is None:
@@ -72,9 +79,9 @@ class GOMP():
                 self.l_joint_limits[:self.n_dofs, t] = joint_limits[:,0]
                 self.u_joint_limits[:self.n_dofs, t] = joint_limits[:,1]
  
-        # init boundary
-        self.l_joint_limits[:,0] = q_start
-        self.u_joint_limits[:,0] = q_start
+        # # init boundary
+        # self.l_joint_limits[:,0] = q_start
+        # self.u_joint_limits[:,0] = q_start
 
         if q_end != None:
             print("Final boundary condition is not implemented.")
@@ -111,7 +118,12 @@ class GOMP():
             options["ipopt.print_level"] = 0
             options["print_time"] = 0
 
-        self.solver = ca.nlpsol('solver', 'ipopt', {'x': x_ca_flatten, 'f': self.objective.eval_cost(x_ca_flatten), 'g': g, 'p': self._param_ca}, options)
+        if self._param_ca is None:
+            print("No runtime parameters.")
+            self.solver = ca.nlpsol('solver', 'ipopt', {'x': x_ca_flatten, 'f': self.objective.eval_cost(x_ca_flatten), 'g': g}, options)
+        else:
+            self.solver = ca.nlpsol('solver', 'ipopt', {'x': x_ca_flatten, 'f': self.objective.eval_cost(x_ca_flatten), 'g': g, 'p': self._param_ca}, options)
+
     
 
         
@@ -124,20 +136,24 @@ class GOMP():
                     self._param_num = self.param_ca_dict[param]["num_param"].reshape((-1,1), order='F')
                 else:
                     self._param_num = ca.vertcat(self._param_num, self.param_ca_dict[param]["num_param"].reshape((-1,1), order='F'))
-
-        result = self.solver(x0=self.x_init,
-                             lbg=self.g_lb,
-                             ubg=self.g_ub,
-                             lbx=self.l_joint_limits.reshape((-1,1), order='F'),
-                             ubx=self.u_joint_limits.reshape((-1,1), order='F'),
-                             p=self._param_num)
+        if self._param_num is None:
+            result = self.solver(x0=self.x_init,
+                                lbg=self.g_lb,
+                                ubg=self.g_ub,
+                                lbx=self.l_joint_limits.reshape((-1,1), order='F'),
+                                ubx=self.u_joint_limits.reshape((-1,1), order='F'))
+        else:
+            result = self.solver(x0=self.x_init,
+                                lbg=self.g_lb,
+                                ubg=self.g_ub,
+                                lbx=self.l_joint_limits.reshape((-1,1), order='F'),
+                                ubx=self.u_joint_limits.reshape((-1,1), order='F'),
+                                p=self._param_num)
 
         success_flag = self.solver.stats()["success"]
         success_msg = self.solver.stats()["return_status"]
 
-        temp_x = result['x'].reshape((self.n_dofs, self.n_waypoints))
-
-        return  result['x'].reshape((self.n_dofs, self.n_waypoints)), success_flag
+        return  result['x'].reshape((self.x_dim, self.n_waypoints)), success_flag
 
 
     def add_acc_objective_function(self):
@@ -149,7 +165,7 @@ class GOMP():
             "grasp" : False
             }
         # Create objective function
-        self.objective = SquaredAccCost(self.n_waypoints, self.x_dim, manip_frame=False)
+        self.objective = SquaredAccCost(self.n_waypoints, self.x_dim, manip_frame=True)
     
     def add_dist_home_objective_function(self):
         # Define parameter sym variable
@@ -166,6 +182,8 @@ class GOMP():
     def update_constraints_params(self, content_dict):
         for g_name, g_param in content_dict.items():
             if self.param_ca_dict[g_name]["grasp"]:
+                # self.update_object_pose(g_param)
+                # self.update_grasp_DOF(self.theta, degrees=False)
                 self.T_Obj_Grasp = np.eye(4, dtype=float)
                 self.T_Obj_Grasp[:3,:3] = R.from_euler('xyz', [0, self.roll_obj_grasp, 0], degrees=False).as_matrix()
                 self.T_W_Obj = g_param
@@ -212,6 +230,22 @@ class GOMP():
                                               waypoint_ID=waypoint_ID, 
                                               paramca_T_W_Grasp=self.param_ca_dict[name]["sym_param"],
                                               tolerance=tolerance))
+        
+    def add_grasp_manip_pos_constraint(self, name, waypoint_ID, tolerance=0.0):
+        # Define parameter sym variable
+        self.param_ca_dict[name] =  {
+            "waypoint_ID" : waypoint_ID,
+            "sym_param" : ca.SX.sym(name, 4, 4),
+            "num_param" : np.eye(4),
+            "tolerance" : tolerance,
+            "grasp" : True
+            }
+        # Create
+        self.g_list.append(GraspManipPosConstraint(robot=self._robot_model, 
+                                                    q_ca=self.x, 
+                                                    waypoint_ID=waypoint_ID, 
+                                                    paramca_T_W_Grasp=self.param_ca_dict[name]["sym_param"],
+                                                    tolerance=tolerance))
 
     def add_grasp_rot_constraint(self, name, waypoint_ID, tolerance=0.1):
         # Define parameter sym variable
@@ -222,32 +256,33 @@ class GOMP():
             "tolerance" : tolerance,
             "grasp" : True
             }
-        self.g_list.append(GraspRotConstraint(robot=self._robot_model, 
-                                              q_ca=self.x, 
-                                              waypoint_ID=waypoint_ID, 
-                                              paramca_T_W_Grasp=self.param_ca_dict[name]["sym_param"], 
-                                              theta=self.theta, 
-                                              tolerance=tolerance))
+        # self.g_list.append(GraspRotConstraint(robot=self._robot_model, 
+        #                                       q_ca=self.x, 
+        #                                       waypoint_ID=waypoint_ID, 
+        #                                       paramca_T_W_Grasp=self.param_ca_dict[name]["sym_param"], 
+        #                                       theta=self.theta, 
+        #                                       tolerance=tolerance))
+        self.g_list.append(AngleBetweenVectorsConstraint(robot=self._robot_model,
+                                                         q_ca=self.x,
+                                                         waypoint_ID=waypoint_ID, 
+                                                         paramca_T_W_Grasp=self.param_ca_dict[name]["sym_param"], 
+                                                         theta=self.theta))
 
-
-    def add_grasp_rot_dof_constraint(self, name, waypoint_ID, theta, axis="x"):
+    def add_grasp_manip_rot_constraint(self, name, waypoint_ID, tolerance=0.1):
         # Define parameter sym variable
         self.param_ca_dict[name] =  {
             "waypoint_ID" : waypoint_ID,
             "sym_param" : ca.SX.sym(name, 4, 4),
             "num_param" : np.eye(4),
-            "theta" : theta,
-            "axis" : axis,
+            "tolerance" : tolerance,
             "grasp" : True
             }
-        self.theta = theta
-        self.g_list.append(AngleBetweenVectorsConstraint(
-                                                robot=self._robot_model,
-                                                q_ca=self.x,
-                                                waypoint_ID=waypoint_ID, 
-                                                paramca_T_W_Grasp=self.param_ca_dict[name]["sym_param"], 
-                                                theta=self.theta,
-                                                axis=axis))
+        self.g_list.append(GraspManipRotConstraint(robot=self._robot_model,
+                                                         q_ca=self.x,
+                                                         waypoint_ID=waypoint_ID, 
+                                                         paramca_T_W_Grasp=self.param_ca_dict[name]["sym_param"], 
+                                                         theta=self.theta))
+
 
     def add_z_pos_constraint(self, name, waypoint_ID, z_height, tolerance=0.01):
         self.param_ca_dict[name] =  {
@@ -263,3 +298,33 @@ class GOMP():
                                              waypoint_ID=waypoint_ID, 
                                              z_height = z_height,
                                              tolerance=tolerance))
+        
+
+    def add_manipulation_constraint(self, name, waypoint_ID):
+        self.param_ca_dict[name] =  {
+            "waypoint_ID" : waypoint_ID,
+            "sym_param" : None,
+            "num_param" : None,
+            "grasp" : False
+            }
+        self.g_list.append(ManipulationConstraint(robot=self._robot_model,
+                                                  q_ca=self.x,
+                                                  waypoint_ID=waypoint_ID,
+                                                  n_dofs=self.n_dofs))
+        
+    def add_pregrasp_constraint(self, name, waypoint_ID, grasp_waypoint_ID, offset, tolerance=0.0):
+        # Define parameter sym variable
+        self.param_ca_dict[name] =  {
+            "waypoint_ID" : waypoint_ID,
+            "sym_param" : None,
+            "num_param" : None,
+            "tolerance" : tolerance,
+            "grasp" : None
+            }
+        # Create
+        self.g_list.append(PreGraspConstraint(robot=self._robot_model, 
+                                              q_ca=self.x, 
+                                              waypoint_ID=waypoint_ID,
+                                              grasp_waypoint_ID=grasp_waypoint_ID,
+                                              offset = offset,
+                                              tolerance=tolerance))

@@ -35,6 +35,11 @@ class RobotKinematicModel():
 
     def eval_fk(self, q):
         return self.robot_fk.numpy(q, self.end_link, position_only=False)
+    
+    def eval_fk_rpy(self, q):
+        T_W_EEF =  self.robot_fk.numpy(q, self.end_link, position_only=False)
+        R_W_EEF_rpy = sc.Rotation.from_matrix(T_W_EEF[:3,:3]).as_euler("xyz") #convert rotation part of FK into rpy
+        return np.concatenate((T_W_EEF[:3,3], R_W_EEF_rpy), axis=None)
 
     def _read_joint_pos_limits(self):
         joints = self.robot_fk.robot.get_joint_info(self.root_link, self.end_link )

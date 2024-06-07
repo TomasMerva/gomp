@@ -6,9 +6,6 @@ from grasp_planning.constraints.constraint_template import Constraint
 class OrientationConstraint(Constraint):
     def __init__(self, robot, q_ca, paramca_T_W_Ref, tolerance=0.0) -> None:
         super().__init__() 
-        # q = q_ca[:n_dof, waypoint_ID] -> joint space of the robot (decision variable)
-        # manip_frame = q_ca[n_dof:, waypoint_ID] -> manipulation frame (decision variable)
-        # manip frame_pos - T_W_Grasp_pos = 0
         self._robot = robot
         self.tolerance = tolerance
         R_W_EEF = self._robot.compute_fk_ca(q_ca)[:3, :3]
@@ -20,7 +17,7 @@ class OrientationConstraint(Constraint):
 
         self.g_lb = 2*np.cos(tolerance) + 1.0
         self.g_ub = ca.inf
-        self.g_eval = ca.Function('g_grasp_pos', [q_ca, paramca_T_W_Ref], [self.g])
+        self.g_eval = ca.Function('g_rot', [q_ca, paramca_T_W_Ref], [self.g])
       
     def get_constraint(self):
         return self.g, self.g_lb, self.g_ub
