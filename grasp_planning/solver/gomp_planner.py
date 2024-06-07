@@ -213,15 +213,17 @@ class GOMP():
                                               paramca_T_W_Grasp=self.param_ca_dict[name]["sym_param"],
                                               tolerance=tolerance))
 
-    def add_grasp_rot_constraint(self, name, waypoint_ID, tolerance=0.1):
+    def add_grasp_rot_constraint(self, name, waypoint_ID, theta, tolerance=0.1):
         # Define parameter sym variable
         self.param_ca_dict[name] =  {
             "waypoint_ID" : waypoint_ID,
             "sym_param" : ca.SX.sym(name, 4, 4),
             "num_param" : np.eye(4),
             "tolerance" : tolerance,
+            "theta" : theta,
             "grasp" : True
             }
+        self.theta = theta
         self.g_list.append(GraspRotConstraint(robot=self._robot_model, 
                                               q_ca=self.x, 
                                               waypoint_ID=waypoint_ID, 
