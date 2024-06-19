@@ -3,11 +3,11 @@ import casadi as ca
 import spatial_casadi as sc
 from scipy.spatial.transform import Rotation as R
 from grasp_planning.solver.robot_model import RobotKinematicModel
-from grasp_planning.cost.costs import SquaredAccCost
+from grasp_planning.cost.costs import *
 from grasp_planning.constraints.constraints import *
 
 class GOMP():
-    def __init__(self, n_waypoints, urdf, theta=np.pi/4, roll_obj_grasp = np.pi, root_link='world', end_link='tool_frame') -> None:
+    def __init__(self, n_waypoints, urdf, roll_obj_grasp = np.pi, root_link='world', end_link='tool_frame') -> None:
         # Init variables
         self.T_W_Grasp = None
         self.T_W_Obj = None
@@ -19,7 +19,8 @@ class GOMP():
         self.manipulation_frame_dim = 6
         self.x_dim = self.n_dofs
         self.n_waypoints = n_waypoints
-        self.theta = theta
+        self.x_casadi_dim = self.x_dim *self.n_waypoints
+        self.theta = 0.0
         self.roll_obj_grasp = roll_obj_grasp
         
         # Optimization
@@ -45,14 +46,10 @@ class GOMP():
             self.theta = theta
         # Create static grasp's frame with respect to object's frame
         self.T_Obj_Grasp = np.eye(4, dtype=float)
-        self.T_Obj_Grasp[:3,:3] = R.from_euler('xyz', [self.roll_obj_grasp, 0, 0], degrees=False).as_matrix()
-
-        # Compute lower bound with the additional DoF
-        T_Grasp_DoF = np.eye(4)
-        T_Grasp_DoF[:3,:3] = R.from_euler('xyz', [0.0, -self.theta, 0], degrees=False).as_matrix()
+        self.T_Obj_Grasp[:3,:3] = R.from_euler('xyz', [0, self.roll_obj_grasp, 0], degrees=False).as_matrix()
 
         # Lower bound with respect to the world frame
-        self.T_W_Grasp = self.T_W_Obj @ self.T_Obj_Grasp @ T_Grasp_DoF
+        self.T_W_Grasp = self.T_W_Obj @ self.T_Obj_Grasp 
 
 
     def update_object_pose(self, T_W_Obj: np.array) -> None:
@@ -62,7 +59,7 @@ class GOMP():
         self.T_W_Obj = T_W_Obj
 
     def set_init_guess(self, q):
-        self.x_init = np.tile(q, self.n_waypoints)
+        self.x_init = np.tile(q, self.n_waypoints).reshape((-1,1))
 
     def set_boundary_conditions(self, q_start, q_end=None):
         if self.l_joint_limits is None or self.u_joint_limits is None:
@@ -108,7 +105,6 @@ class GOMP():
                     self._param_ca = self.param_ca_dict[param]["sym_param"].reshape((-1,1))
                 else:
                     self._param_ca = ca.vertcat(self._param_ca, self.param_ca_dict[param]["sym_param"].reshape((-1,1)))
-
         options = {}
         options["ipopt.acceptable_tol"] = 1e-3
         if not verbose:
@@ -121,13 +117,13 @@ class GOMP():
         
     def solve(self):
         # Replace symbolic variables with numeric values
+        self._param_num = None
         for param in self.param_ca_dict:
             if self.param_ca_dict[param]["num_param"] is not None:
                 if self._param_num is None:
                     self._param_num = self.param_ca_dict[param]["num_param"].reshape((-1,1), order='F')
                 else:
                     self._param_num = ca.vertcat(self._param_num, self.param_ca_dict[param]["num_param"].reshape((-1,1), order='F'))
-
         result = self.solver(x0=self.x_init,
                              lbg=self.g_lb,
                              ubg=self.g_ub,
@@ -137,23 +133,48 @@ class GOMP():
 
         success_flag = self.solver.stats()["success"]
         success_msg = self.solver.stats()["return_status"]
+
+        temp_x = result['x'].reshape((self.n_dofs, self.n_waypoints))
+
         return  result['x'].reshape((self.n_dofs, self.n_waypoints)), success_flag
 
 
-    def add_objective_function(self):
+    def add_acc_objective_function(self):
         # Define parameter sym variable
         name = "objective_param"
         self.param_ca_dict[name] =  {
             "sym_param" : None,
-            "num_param" : None
+            "num_param" : None,
+            "grasp" : False
             }
         # Create objective function
         self.objective = SquaredAccCost(self.n_waypoints, self.x_dim, manip_frame=False)
     
+    def add_dist_home_objective_function(self):
+        # Define parameter sym variable
+        name = "objective_param"
+        self.param_ca_dict[name] =  {
+            "sym_param" : ca.SX.sym(name, self.x_casadi_dim, 1),
+            "num_param" : np.zeros((self.x_casadi_dim, 1)),
+            "grasp" : False
+            }
+       
+        self.objective = DistToHome(q_home=self.param_ca_dict[name]["sym_param"],
+                                    n_dofs=self.x_casadi_dim)
+    
 
     def update_constraints_params(self, content_dict):
         for g_name, g_param in content_dict.items():
-            self.param_ca_dict[g_name]["num_param"] = g_param
+            if self.param_ca_dict[g_name]["grasp"]:
+                self.T_Obj_Grasp = np.eye(4, dtype=float)
+                self.T_Obj_Grasp[:3,:3] = R.from_euler('xyz', [0, self.roll_obj_grasp, 0], degrees=False).as_matrix()
+                self.T_W_Obj = g_param
+                self.T_W_Grasp = self.T_W_Obj @ self.T_Obj_Grasp
+                self.param_ca_dict[g_name]["num_param"] = self.T_W_Grasp
+            else:
+                self.param_ca_dict[g_name]["num_param"] = g_param
+        
+        return self.T_W_Grasp
 
     def add_collision_constraint(self, name, waypoint_ID, child_link, r_link=0.5, r_obst=0.2, tolerance=0.01):
         # Define parameter sym variable
@@ -164,7 +185,8 @@ class GOMP():
             "tolerance" : tolerance,
             "child_link" : child_link,
             "r_link" : r_link,
-            "r_obst" : r_obst
+            "r_obst" : r_obst,
+            "grasp" : False,
             }
         self.g_list.append(CollisionConstraint(robot=self._robot_model,
                                                 q_ca=self.x,
@@ -181,7 +203,8 @@ class GOMP():
             "waypoint_ID" : waypoint_ID,
             "sym_param" : ca.SX.sym(name, 4, 4),
             "num_param" : np.eye(4),
-            "tolerance" : tolerance
+            "tolerance" : tolerance,
+            "grasp" : True
             }
         # Create
         self.g_list.append(GraspPosConstraint(robot=self._robot_model, 
@@ -190,14 +213,17 @@ class GOMP():
                                               paramca_T_W_Grasp=self.param_ca_dict[name]["sym_param"],
                                               tolerance=tolerance))
 
-    def add_grasp_rot_constraint(self, name, waypoint_ID, tolerance=0.1):
+    def add_grasp_rot_constraint(self, name, waypoint_ID, theta, tolerance=0.1):
         # Define parameter sym variable
         self.param_ca_dict[name] =  {
             "waypoint_ID" : waypoint_ID,
             "sym_param" : ca.SX.sym(name, 4, 4),
             "num_param" : np.eye(4),
-            "tolerance" : tolerance
+            "tolerance" : tolerance,
+            "theta" : theta,
+            "grasp" : True
             }
+        self.theta = theta
         self.g_list.append(GraspRotConstraint(robot=self._robot_model, 
                                               q_ca=self.x, 
                                               waypoint_ID=waypoint_ID, 
@@ -206,13 +232,33 @@ class GOMP():
                                               tolerance=tolerance))
 
 
+    def add_grasp_rot_dof_constraint(self, name, waypoint_ID, theta, axis="x"):
+        # Define parameter sym variable
+        self.param_ca_dict[name] =  {
+            "waypoint_ID" : waypoint_ID,
+            "sym_param" : ca.SX.sym(name, 4, 4),
+            "num_param" : np.eye(4),
+            "theta" : theta,
+            "axis" : axis,
+            "grasp" : True
+            }
+        self.theta = theta
+        self.g_list.append(AngleBetweenVectorsConstraint(
+                                                robot=self._robot_model,
+                                                q_ca=self.x,
+                                                waypoint_ID=waypoint_ID, 
+                                                paramca_T_W_Grasp=self.param_ca_dict[name]["sym_param"], 
+                                                theta=self.theta,
+                                                axis=axis))
+
     def add_z_pos_constraint(self, name, waypoint_ID, z_height, tolerance=0.01):
         self.param_ca_dict[name] =  {
             "waypoint_ID" : waypoint_ID,
             "sym_param" : None,
             "num_param" : None,
             "z_height" : z_height,
-            "tolerance" : tolerance
+            "tolerance" : tolerance,
+            "grasp" : False
             }
         self.g_list.append(ZheightConstraint(robot=self._robot_model,
                                              q_ca=self.x,

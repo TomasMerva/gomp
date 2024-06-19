@@ -17,11 +17,12 @@ class CollisionConstraint(Constraint):
         self.g = ca.norm_2(T_W_link[:3,3]-param_obst_ca) #obstacle_pos
         self.g_lb = self.r_link + self.r_obst + self.d_safety
         self.g_ub = float("inf")
+        self.g_eval = ca.Function('g_grasp_anglevectors', [q_ca, param_obst_ca], [self.g])
 
 
     def get_constraint(self):
         return self.g, self.g_lb, self.g_ub
 
-    def do_eval(self, q, T_W_Grasp):
-        pass
-        #return self.g_eval(q, T_W_Grasp)
+    def do_eval(self, q, pos_W_obst):
+        return self.g_eval(q, pos_W_obst), self.g_lb, self.g_ub
+
