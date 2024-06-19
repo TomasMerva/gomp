@@ -19,6 +19,7 @@ class GOMP():
         self.manipulation_frame_dim = 6
         self.x_dim = self.n_dofs
         self.n_waypoints = n_waypoints
+        self.x_casadi_dim = self.x_dim *self.n_waypoints
         self.theta = 0.0
         self.roll_obj_grasp = roll_obj_grasp
         
@@ -104,7 +105,6 @@ class GOMP():
                     self._param_ca = self.param_ca_dict[param]["sym_param"].reshape((-1,1))
                 else:
                     self._param_ca = ca.vertcat(self._param_ca, self.param_ca_dict[param]["sym_param"].reshape((-1,1)))
-
         options = {}
         options["ipopt.acceptable_tol"] = 1e-3
         if not verbose:
@@ -124,7 +124,6 @@ class GOMP():
                     self._param_num = self.param_ca_dict[param]["num_param"].reshape((-1,1), order='F')
                 else:
                     self._param_num = ca.vertcat(self._param_num, self.param_ca_dict[param]["num_param"].reshape((-1,1), order='F'))
-
         result = self.solver(x0=self.x_init,
                              lbg=self.g_lb,
                              ubg=self.g_ub,
@@ -155,12 +154,13 @@ class GOMP():
         # Define parameter sym variable
         name = "objective_param"
         self.param_ca_dict[name] =  {
-            "sym_param" : ca.SX.sym(name, self.x_dim, 1),
-            "num_param" : np.zeros((self.x_dim, 1)),
+            "sym_param" : ca.SX.sym(name, self.x_casadi_dim, 1),
+            "num_param" : np.zeros((self.x_casadi_dim, 1)),
             "grasp" : False
             }
+       
         self.objective = DistToHome(q_home=self.param_ca_dict[name]["sym_param"],
-                                    n_dofs=self.x_dim)
+                                    n_dofs=self.x_casadi_dim)
     
 
     def update_constraints_params(self, content_dict):
@@ -186,7 +186,7 @@ class GOMP():
             "child_link" : child_link,
             "r_link" : r_link,
             "r_obst" : r_obst,
-            "grasp" : False
+            "grasp" : False,
             }
         self.g_list.append(CollisionConstraint(robot=self._robot_model,
                                                 q_ca=self.x,

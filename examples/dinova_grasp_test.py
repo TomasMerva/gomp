@@ -23,10 +23,9 @@ Planner
 """
 n_waypoints = 3
 grasp_waypoint_ID = 2
-theta = np.pi/2
 planner = GOMP(n_waypoints=n_waypoints, 
                urdf=URDF_FILE, 
-               roll_obj_grasp=np.pi/2,
+               roll_obj_grasp=np.pi/4,
                root_link='world', 
                end_link='arm_tool_frame')
 
@@ -34,13 +33,14 @@ planner = GOMP(n_waypoints=n_waypoints,
 planner.set_init_guess(q_current)
 planner.set_boundary_conditions(q_start=q_current)
 planner.add_acc_objective_function()
+
 # Create constraints for grasping
 planner.add_grasp_pos_constraint(name="g_grasp_pos_1",
                                  waypoint_ID=grasp_waypoint_ID,
                                  tolerance=0.0)
 planner.add_grasp_rot_dof_constraint(name="g_grasp_rot_1",
                                     waypoint_ID=grasp_waypoint_ID,
-                                    theta = theta,
+                                    theta = 0.0,
                                     axis="x")
 # Create constraints for collision avoidance
 active_links = ['chassis_link', 

@@ -33,9 +33,12 @@ class RobotKinematicModel():
         R_ca_rpy = sc.Rotation.from_matrix(fk_ca[:3,:3]).as_euler("xyz") #convert rotation part of FK into rpy
         return ca.vertcat(fk_ca[:3,3], R_ca_rpy)
 
-    def eval_fk(self, q):
-        return self.robot_fk.numpy(q, self.end_link, position_only=False)
-    
+    def eval_fk(self, q, end_link=None):
+        if end_link == None:
+            return self.robot_fk.numpy(q, self.end_link, position_only=False)
+        else:
+            return self.robot_fk.numpy(q, end_link, position_only=False)
+
     def eval_fk_rpy(self, q):
         T_W_EEF =  self.robot_fk.numpy(q, self.end_link, position_only=False)
         R_W_EEF_rpy = sc.Rotation.from_matrix(T_W_EEF[:3,:3]).as_euler("xyz") #convert rotation part of FK into rpy
