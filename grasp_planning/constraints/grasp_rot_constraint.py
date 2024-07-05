@@ -105,5 +105,4 @@ class GraspRotConstraint(Constraint):
         return self.g, self.g_lb, self.g_ub
 
     def do_eval(self, q, T_W_Grasp):
-        print(T_W_Grasp)
         return self.g_eval(q, T_W_Grasp), self.g_lb, self.g_ub

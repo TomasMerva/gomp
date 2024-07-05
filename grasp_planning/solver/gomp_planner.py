@@ -107,6 +107,7 @@ class GOMP():
                     self._param_ca = ca.vertcat(self._param_ca, self.param_ca_dict[param]["sym_param"].reshape((-1,1)))
         options = {}
         options["ipopt.acceptable_tol"] = 1e-3
+        options["expand"] = True
         if not verbose:
             options["ipopt.print_level"] = 0
             options["print_time"] = 0
