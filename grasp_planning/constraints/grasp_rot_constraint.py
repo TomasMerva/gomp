@@ -42,7 +42,7 @@ class GraspRotConstraint(Constraint):
         
         R_W_EEF = self._robot.compute_fk_ca(q_ca[:,waypoint_ID])
         R_W_G = paramca_T_W_Grasp[:3,:3]
-        R_G_EEF = (R_W_G.T) @ R_W_EEF[:3,:3]
+        # R_G_EEF = (R_W_G.T) @ R_W_EEF[:3,:3]
         # Rpy_G_EEF = sc.Rotation.from_matrix(R_G_EEF).as_euler("xyz")
 
         # self.g = ca.vertcat(Rpy_G_EEF[0], Rpy_G_EEF[1], Rpy_G_EEF[2])

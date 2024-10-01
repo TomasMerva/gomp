@@ -15,6 +15,7 @@ class GOMP():
         
         # Kinematics
         self._robot_model = RobotKinematicModel(urdf, root_link, end_link)
+    
         self.n_dofs = self._robot_model.n_dofs
         self.manipulation_frame_dim = 6
         self.x_dim = self.n_dofs
@@ -77,6 +78,7 @@ class GOMP():
         self.l_joint_limits[:,0] = q_start
         self.u_joint_limits[:,0] = q_start
 
+
         if q_end != None:
             print("Final boundary condition is not implemented.")
     
@@ -106,7 +108,7 @@ class GOMP():
                 else:
                     self._param_ca = ca.vertcat(self._param_ca, self.param_ca_dict[param]["sym_param"].reshape((-1,1)))
         options = {}
-        options["ipopt.acceptable_tol"] = 1e-3
+        # options["ipopt.acceptable_tol"] = 1e-3
         options["expand"] = True
         if not verbose:
             options["ipopt.print_level"] = 0
@@ -125,6 +127,7 @@ class GOMP():
                     self._param_num = self.param_ca_dict[param]["num_param"].reshape((-1,1), order='F')
                 else:
                     self._param_num = ca.vertcat(self._param_num, self.param_ca_dict[param]["num_param"].reshape((-1,1), order='F'))
+
         result = self.solver(x0=self.x_init,
                              lbg=self.g_lb,
                              ubg=self.g_ub,
@@ -136,7 +139,7 @@ class GOMP():
         success_msg = self.solver.stats()["return_status"]
 
         temp_x = result['x'].reshape((self.n_dofs, self.n_waypoints))
-
+       
         return  result['x'].reshape((self.n_dofs, self.n_waypoints)), success_flag
 
 

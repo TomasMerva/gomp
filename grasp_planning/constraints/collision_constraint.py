@@ -14,9 +14,9 @@ class CollisionConstraint(Constraint):
         
         T_W_link = self._robot.compute_fk_ca(q_ca[:,waypoint_ID], link_name)
 
-        self.g = ca.norm_2(T_W_link[:3,3]-param_obst_ca) #obstacle_pos
-        self.g_lb = self.r_link + self.r_obst + self.d_safety
-        self.g_ub = float("inf")
+        self.g = ca.norm_2(T_W_link[:3,3]-param_obst_ca) - self.r_link + self.r_obst + self.d_safety#obstacle_pos
+        self.g_lb = 0
+        self.g_ub = ca.inf
         self.g_eval = ca.Function('g_grasp_anglevectors', [q_ca, param_obst_ca], [self.g])
 
 

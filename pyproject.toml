@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "grasp_planning"
-version = "0.6.2"
+version = "0.7.0"
 description = "\"Grasp and Motion Planning Python Package.\""
 authors = ["Tomas Merva <tmerva7@gmail.com>"]
 license = "MIT"
